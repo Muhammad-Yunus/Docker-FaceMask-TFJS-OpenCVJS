@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Face Detection OpenCV.js</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.3/dist/css/bootstrap.min.css"
+        integrity="sha384-TX8t27EcRE3e/ihU7zmQxVncDAy5uIKz4rEkgIXeMed4M0jlfIDPvg6uqKI2xXr2" crossorigin="anonymous">
+</head>
+
+<body>
+    <div class="container mt-2">
+        <div class="jumbotron">
+            <div class="container">
+                <h1 class="display-5">Face Mask Detection OpenCV.js & Tensorflow.js</h1>
+                <span id="statusOpenCVJS" class="lead">OpenCV.js is loading...</span>
+                <span id="spinner_element_opencvjs" class="spinner-border text-primary" role="status"
+                    style="width: 1.5rem; height: 1.5rem;"><span class="sr-only">Loading...</span>
+                </span><br>
+                <span id="statusTFJS" class="lead">Tensorflow.js is loading...</span>
+                <span id="spinner_element_tfjs" class="spinner-border text-primary" role="status"
+                    style="width: 1.5rem; height: 1.5rem;"><span class="sr-only">Loading...</span>
+                </span>
+            </div>
+            <div id="main_window" class="container mt-1 p-4 bg-white rounded">
+                <canvas id="canvasOutput" width=320 height=240 class="rounded"></canvas>
+                <canvas id="imageCanvas" style="display:none"></canvas>
+                <div style="width:320px">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <span style="font-weight: 400; font-size: 12px; text-overflow: ellipsis; overflow: hidden;">
+                                With Mask </span>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="progress" style="height:30px">
+                                <div id="label_with_mask" class="progress-bar bg-success pt-2 pb-2" role="progressbar"
+                                    style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <span style="font-weight: 400; font-size: 12px; text-overflow: ellipsis; overflow: hidden;">
+                                Without Mask </span>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="progress mt-1" style="height:30px">
+                                <div id="label_without_mask" class="progress-bar bg-warning pt-2 pb-2"
+                                    role="progressbar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@0.8/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"
+        integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg=="
+        crossorigin="anonymous"></script>
+    <script src="{{ url_for('static', filename='js/opencv/utils.js') }}" type="text/javascript"></script>
+    <script type="text/javascript">
+        // Tensorflow.js initialization
+        let model, maxPredictions;
+        var canvas = document.getElementById('imageCanvas');
+        var ctx = canvas.getContext('2d');
+
+        // OpenCV.js Initialization
+        let utils = new Utils('errorMessage', "{{ url_for('static', filename='js/opencv/opencv.js') }}"); //use utils class
+        let faceCascadeFilename = 'haarcascade_frontalface_default.xml';
+        let faceCascadeUrl = "{{ url_for('static', filename='js/opencv/haarcascade_frontalface_default.xml') }}";
+        const FPS = 10;
+
+        utils.loadOpenCv(() => {
+            utils.createFileFromUrl(faceCascadeFilename, faceCascadeUrl, () => {
+                console.log("[INFO] XML loaded...");
+                $('#statusOpenCVJS').html('OpenCV.js is ready.');
+                $("#spinner_element_opencvjs").hide();
+                window.classifier = new cv.CascadeClassifier();
+                window.classifier.load(faceCascadeFilename);
+
+                $("#main_window").append('<img id="mjpgStream" src="{{ mjpg_proxy_url }}" style="display:none" crossOrigin>');
+                window.imgElement = $('#mjpgStream')[0];
+                window.imgElement.onload = function () {
+                    console.log('[INFO] mjpeg source loaded...');
+                    setTimeout(run_app, 0);
+                }
+                // load TF.js here
+                init();
+
+            });
+        });
+
+        function run_app() {
+            let faces = new cv.RectVector();
+            let dst = new cv.Mat();
+            let gray = new cv.Mat();
+            let face_mask = new cv.Mat();
+
+            let begin = Date.now();
+            dst = cv.imread(imgElement);
+            cv.pyrDown(dst, dst, new cv.Size(0, 0), cv.BORDER_DEFAULT);
+            cv.cvtColor(dst, gray, cv.COLOR_RGBA2GRAY, 0);
+
+            // detect faces.
+            window.classifier.detectMultiScale(gray, faces, 1.1, 3, 0);
+            gray.delete();
+
+            // draw faces.
+            for (let i = 0; i < faces.size(); ++i) {
+                let face = faces.get(i);
+                let point1 = new cv.Point(face.x, face.y);
+                let point2 = new cv.Point(face.x + face.width, face.y + face.height);
+                let rect = new cv.Rect(face.x - parseInt(face.width / 2), face.y - parseInt(face.height / 2), parseInt(face.width * 2), parseInt(face.height * 2));
+                try {
+                    face_mask = dst.roi(rect);
+                    cv.resize(face_mask, face_mask, new cv.Size(224, 224), fx = 0, fy = 0, interpolation = cv.INTER_LINEAR);
+                    // detect mask here (Tnesorflow.js)
+                    detect_mask(face_mask);
+                    cv.rectangle(dst, point1, point2, [255, 0, 0, 255]);
+                }
+                catch (err) {
+                    console.log("[ERROR] Detect :", err.message);
+                }
+            }
+            if (faces.size() < 1) {
+                $('#label_with_mask').css("width", '0%');
+                $('#label_with_mask').html('0%');
+                $('#label_without_mask').css("width", '0%');
+                $('#label_without_mask').html('0%');
+            }
+            cv.imshow('canvasOutput', dst);
+
+            dst.delete();
+            // schedule the next one.
+            let delay = 1000 / FPS - (Date.now() - begin);
+            setTimeout(run_app, delay);
+        };
+
+        async function init() {
+            const modelURL = "{{ url_for('static', filename='model/model.json') }}";
+            const metadataURL = "{{ url_for('static', filename='model/metadata.json') }}";
+
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+
+            console.log("[INFO] TF.js Model loaded...");
+            $('#statusTFJS').html('Tensorflow.js is ready.');
+            $("#spinner_element_tfjs").hide();
+
+        }
+
+        function argMax(array) {
+            return [].reduce.call(array, (m, c, i, arr) => c > arr[m] ? i : m, 0)
+        }
+
+        async function detect_mask(face_mask) {
+            try {
+                let imageData = ctx.createImageData(face_mask.cols, face_mask.rows);
+                imageData.data.set(new Uint8ClampedArray(face_mask.data, face_mask.cols, face_mask.rows));
+                canvas.height = face_mask.rows;
+                canvas.width = face_mask.cols;
+
+                ctx.putImageData(imageData, 0, 0);
+
+                const prediction = await model.predict(canvas);
+                var result = [];
+                prediction.forEach(function (item, index) {
+                    result.push(item['probability']);
+                });
+                let idx = argMax(result);
+
+                $('#label_with_mask').css("width", prediction[0].probability.toFixed(2) * 100 + '%');
+                $('#label_with_mask').html(prediction[0].probability.toFixed(2) * 100 + '%');
+                $('#label_without_mask').css("width", prediction[1].probability.toFixed(2) * 100 + '%');
+                $('#label_without_mask').html(prediction[1].probability.toFixed(2) * 100 + '%');
+                let labelContainer = prediction[idx].className + ": " + prediction[idx].probability.toFixed(2);
+                console.log("[INFO] predicted :", labelContainer);
+            }
+            catch (err) {
+                console.log("[ERROR] Predict : ", err.message);
+            }
+        };
+    </script>
+</body>
+
+</html>
