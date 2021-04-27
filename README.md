@@ -17,3 +17,4 @@
     cd Docker-FaceMask-TFJS-OpenCVJS
     docker-compose -f "docker-compose.yml" up -d --build
     ```
+- Access the App in URL : [https://HOST_IP:5002/](https://HOST_IP:5002/)
