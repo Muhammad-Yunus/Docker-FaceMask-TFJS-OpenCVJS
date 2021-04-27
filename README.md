@@ -4,7 +4,7 @@
 
 - Install MJPEG Streamer in Raspberry Pi : 
 [https://github.com/jacksonliam/mjpg-streamer](https://github.com/jacksonliam/mjpg-streamer)
-- Install & Run NodeJS MJPEG Proxy Server Docker Container :
+- Pull & Run NodeJS MJPEG Proxy Server Docker Container :
 [https://github.com/Muhammad-Yunus/docker-mjpeg-proxy](https://github.com/Muhammad-Yunus/docker-mjpeg-proxy)
 
 - Create Self-Sign-Certificate inside directory `face_mask_app/CERT/`:
